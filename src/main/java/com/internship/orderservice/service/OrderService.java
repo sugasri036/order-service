@@ -3,6 +3,7 @@ package com.internship.orderservice.service;
 import com.internship.orderservice.entity.Order;
 import com.internship.orderservice.repository.OrderRepository;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -20,6 +21,9 @@ public class OrderService {
     private final RestTemplate restTemplate;
 
     private final JobQueueService jobQueueService;
+
+    @Value("${payment.service.url}")
+    private String paymentServiceUrl;
 
 
     // =====================================================
@@ -49,10 +53,6 @@ public class OrderService {
     public Order createOrder(
             Order order) {
 
-        // -------------------------------------------------
-        // VALIDATE USER
-        // -------------------------------------------------
-
         if (order.getUserId() == null ||
                 order.getUserId().isBlank()) {
 
@@ -61,11 +61,6 @@ public class OrderService {
             );
         }
 
-
-        // -------------------------------------------------
-        // VALIDATE FUND
-        // -------------------------------------------------
-
         if (order.getFundId() == null ||
                 order.getFundId().isBlank()) {
 
@@ -73,11 +68,6 @@ public class OrderService {
                     "Fund ID is required"
             );
         }
-
-
-        // -------------------------------------------------
-        // VALIDATE AMOUNT
-        // -------------------------------------------------
 
         if (order.getAmount() == null ||
                 order.getAmount() <= 0) {
@@ -100,12 +90,9 @@ public class OrderService {
                             order.getIdempotencyKey()
                     )
                     .orElseGet(
-                            () -> createNewOrder(
-                                    order
-                            )
+                            () -> createNewOrder(order)
                     );
         }
-
 
         return createNewOrder(order);
     }
@@ -118,36 +105,18 @@ public class OrderService {
     private Order createNewOrder(
             Order order) {
 
-        // -------------------------------------------------
-        // GENERATE INTERNAL ORDER ID
-        // -------------------------------------------------
-
         order.setOrderId(
                 "ORD-" + UUID.randomUUID()
         );
-
-
-        // -------------------------------------------------
-        // INITIAL STATUS
-        // -------------------------------------------------
 
         order.setStatus(
                 "PENDING"
         );
 
-
-        // -------------------------------------------------
-        // CREATED TIME
-        // -------------------------------------------------
-
         order.setCreatedAt(
                 LocalDateTime.now()
         );
 
-
-        // -------------------------------------------------
-        // IDEMPOTENCY KEY
-        // -------------------------------------------------
 
         if (order.getIdempotencyKey() == null ||
                 order.getIdempotencyKey().isBlank()) {
@@ -163,9 +132,7 @@ public class OrderService {
         // =================================================
 
         Order savedOrder =
-                orderRepository.save(
-                        order
-                );
+                orderRepository.save(order);
 
 
         // =================================================
@@ -176,24 +143,20 @@ public class OrderService {
                 paymentRequest =
                 new HashMap<>();
 
-
         paymentRequest.put(
                 "orderId",
                 savedOrder.getOrderId()
         );
-
 
         paymentRequest.put(
                 "userId",
                 savedOrder.getUserId()
         );
 
-
         paymentRequest.put(
                 "amount",
                 savedOrder.getAmount()
         );
-
 
         paymentRequest.put(
                 "idempotencyKey",
@@ -214,6 +177,11 @@ public class OrderService {
 
             System.out.println(
                     "CALLING PAYMENT SERVICE"
+            );
+
+            System.out.println(
+                    "Payment Service URL: "
+                            + paymentServiceUrl
             );
 
             System.out.println(
@@ -239,7 +207,8 @@ public class OrderService {
             Map<String, Object>
                     paymentResponse =
                     restTemplate.postForObject(
-                            "http://localhost:8080/api/payments",
+                            paymentServiceUrl
+                                    + "/api/payments",
                             paymentRequest,
                             Map.class
                     );
@@ -255,7 +224,6 @@ public class OrderService {
                         paymentResponse.get(
                                 "paymentId"
                         );
-
 
                 Object razorpayOrderId =
                         paymentResponse.get(
@@ -295,10 +263,6 @@ public class OrderService {
 
 
         } catch (Exception e) {
-
-            // =================================================
-            // PAYMENT CREATION FAILED
-            // =================================================
 
             System.out.println();
             System.out.println(
@@ -357,9 +321,7 @@ public class OrderService {
 
         Order order =
                 orderRepository
-                        .findByOrderId(
-                                orderId
-                        )
+                        .findByOrderId(orderId)
                         .orElseThrow(
                                 () -> new RuntimeException(
                                         "Order not found: "
@@ -367,11 +329,6 @@ public class OrderService {
                                 )
                         );
 
-
-        // =================================================
-        // IMPORTANT:
-        // DO NOT DOWNGRADE COMPLETED ORDER
-        // =================================================
 
         if ("COMPLETED".equalsIgnoreCase(
                 order.getStatus()
@@ -405,52 +362,28 @@ public class OrderService {
             );
 
 
-            // -------------------------------------------------
-            // Update payment ID only if needed
-            // -------------------------------------------------
-
             if (paymentId != null &&
                     !paymentId.isBlank()) {
 
-                order.setPaymentId(
-                        paymentId
-                );
+                order.setPaymentId(paymentId);
             }
 
 
-            return orderRepository.save(
-                    order
-            );
+            return orderRepository.save(order);
         }
 
 
-        // =================================================
-        // UPDATE ORDER STATUS
-        // =================================================
+        order.setStatus("PAID");
 
-        order.setStatus(
-                "PAID"
-        );
-
-
-        order.setPaymentId(
-                paymentId
-        );
-
+        order.setPaymentId(paymentId);
 
         order.setPaidAt(
                 LocalDateTime.now()
         );
 
 
-        // -------------------------------------------------
-        // SAVE ORDER
-        // -------------------------------------------------
-
         Order savedOrder =
-                orderRepository.save(
-                        order
-                );
+                orderRepository.save(order);
 
 
         // =================================================
@@ -461,10 +394,6 @@ public class OrderService {
                 savedOrder.getOrderId()
         );
 
-
-        // =================================================
-        // LOG
-        // =================================================
 
         System.out.println();
         System.out.println(
@@ -517,9 +446,7 @@ public class OrderService {
 
         Order order =
                 orderRepository
-                        .findByOrderId(
-                                orderId
-                        )
+                        .findByOrderId(orderId)
                         .orElseThrow(
                                 () -> new RuntimeException(
                                         "Order not found: "
@@ -527,10 +454,6 @@ public class OrderService {
                                 )
                         );
 
-
-        // -------------------------------------------------
-        // DO NOT CHANGE COMPLETED ORDERS
-        // -------------------------------------------------
 
         if ("COMPLETED".equalsIgnoreCase(
                 order.getStatus()
@@ -545,24 +468,14 @@ public class OrderService {
         }
 
 
-        // -------------------------------------------------
-        // UPDATE STATUS
-        // -------------------------------------------------
-
         order.setStatus(
                 "PAYMENT_FAILED"
         );
 
 
         Order savedOrder =
-                orderRepository.save(
-                        order
-                );
+                orderRepository.save(order);
 
-
-        // -------------------------------------------------
-        // LOG
-        // -------------------------------------------------
 
         System.out.println();
         System.out.println(
@@ -600,9 +513,7 @@ public class OrderService {
             String orderId) {
 
         return orderRepository
-                .findByOrderId(
-                        orderId
-                )
+                .findByOrderId(orderId)
                 .orElseThrow(
                         () -> new RuntimeException(
                                 "Order not found: "
@@ -616,8 +527,7 @@ public class OrderService {
     // GET ALL ORDERS
     // =====================================================
 
-    public List<Order>
-    getAllOrders() {
+    public List<Order> getAllOrders() {
 
         return orderRepository.findAll();
     }
@@ -627,13 +537,10 @@ public class OrderService {
     // GET USER ORDERS
     // =====================================================
 
-    public List<Order>
-    getOrdersByUser(
+    public List<Order> getOrdersByUser(
             String userId) {
 
         return orderRepository
-                .findByUserId(
-                        userId
-                );
+                .findByUserId(userId);
     }
 }

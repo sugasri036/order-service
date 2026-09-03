@@ -6,6 +6,7 @@ import com.internship.orderservice.entity.Order;
 import com.internship.orderservice.repository.JobQueueRepository;
 import com.internship.orderservice.repository.OrderRepository;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
@@ -21,6 +22,9 @@ public class JobWorker {
     private final OrderRepository orderRepository;
 
     private final RestTemplate restTemplate;
+
+    @Value("${fund.service.url}")
+    private String fundServiceUrl;
 
 
     // =====================================================
@@ -56,7 +60,6 @@ public class JobWorker {
 
 
         if (jobs.isEmpty()) {
-
             return;
         }
 
@@ -108,9 +111,7 @@ public class JobWorker {
                     job.getAttempts() + 1
             );
 
-            jobQueueRepository.save(
-                    job
-            );
+            jobQueueRepository.save(job);
 
 
             System.out.println();
@@ -161,7 +162,8 @@ public class JobWorker {
             // =================================================
 
             String fundUrl =
-                    "http://localhost:8081/api/funds/"
+                    fundServiceUrl
+                            + "/api/funds/"
                             + order.getFundId();
 
 
@@ -169,6 +171,11 @@ public class JobWorker {
 
             System.out.println(
                     "Calling Fund Service..."
+            );
+
+            System.out.println(
+                    "Fund Service URL: "
+                            + fundServiceUrl
             );
 
             System.out.println(
@@ -260,13 +267,9 @@ public class JobWorker {
                     fund.getName()
             );
 
-            order.setNav(
-                    nav
-            );
+            order.setNav(nav);
 
-            order.setUnits(
-                    units
-            );
+            order.setUnits(units);
 
 
             // =================================================
@@ -294,9 +297,7 @@ public class JobWorker {
             // SAVE COMPLETED ORDER
             // =================================================
 
-            orderRepository.saveAndFlush(
-                    order
-            );
+            orderRepository.saveAndFlush(order);
 
 
             // =================================================
@@ -311,14 +312,10 @@ public class JobWorker {
                     LocalDateTime.now()
             );
 
-            job.setErrorMessage(
-                    null
-            );
+            job.setErrorMessage(null);
 
 
-            jobQueueRepository.save(
-                    job
-            );
+            jobQueueRepository.save(job);
 
 
             // =================================================
@@ -390,9 +387,7 @@ public class JobWorker {
             );
 
 
-            jobQueueRepository.save(
-                    job
-            );
+            jobQueueRepository.save(job);
 
 
             System.out.println();
