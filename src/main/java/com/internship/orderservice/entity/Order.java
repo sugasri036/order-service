@@ -21,6 +21,8 @@ public class Order {
 
     private String fundName;
 
+    private String investmentHorizon;
+
     private Double amount;
 
     private Double nav;
@@ -101,6 +103,20 @@ public class Order {
     public void setFundName(String fundName) {
         this.fundName = fundName;
     }
+
+// =====================================================
+// INVESTMENT HORIZON
+// =====================================================
+
+    public String getInvestmentHorizon() {
+        return investmentHorizon;
+   }
+
+    public void setInvestmentHorizon(
+        String investmentHorizon) {
+
+            this.investmentHorizon = investmentHorizon;
+  }
 
 
     // =====================================================
