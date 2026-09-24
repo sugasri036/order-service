@@ -34,7 +34,8 @@ public class JobWorker {
     public JobWorker(
             JobQueueRepository jobQueueRepository,
             OrderRepository orderRepository,
-            RestTemplate restTemplate) {
+            RestTemplate restTemplate
+    ) {
 
         this.jobQueueRepository =
                 jobQueueRepository;
@@ -51,8 +52,22 @@ public class JobWorker {
     // BACKGROUND WORKER
     // =====================================================
 
-    @Scheduled(fixedDelay = 5000)
+    @Scheduled(
+            fixedDelayString =
+                    "${worker.fixed-delay:5000}"
+    )
     public void processJobs() {
+
+        // -------------------------------------------------
+        // RESET STALE JOBS
+        // -------------------------------------------------
+
+        resetStaleJobs();
+
+
+        // -------------------------------------------------
+        // FIND PENDING JOBS
+        // -------------------------------------------------
 
         List<JobQueue> jobs =
                 jobQueueRepository
@@ -60,11 +75,13 @@ public class JobWorker {
 
 
         if (jobs.isEmpty()) {
+
             return;
         }
 
 
         System.out.println();
+
         System.out.println(
                 "===================================="
         );
@@ -83,36 +100,77 @@ public class JobWorker {
         );
 
 
+        // -------------------------------------------------
+        // TRY TO CLAIM EACH JOB
+        // -------------------------------------------------
+
         for (JobQueue job : jobs) {
 
-            processJob(job);
+            boolean claimed =
+                    claimJob(job);
+
+
+            /*
+             * If another pod already claimed the job,
+             * updatedRows will be 0.
+             *
+             * We simply skip the job.
+             */
+
+            if (!claimed) {
+
+                continue;
+            }
+
+
+            processClaimedJob(job);
         }
     }
 
 
     // =====================================================
-    // PROCESS SINGLE JOB
+    // CLAIM JOB
     // =====================================================
 
-    private void processJob(
+    private boolean claimJob(
+            JobQueue job) {
+
+        LocalDateTime processingTime =
+                LocalDateTime.now();
+
+
+        int updatedRows =
+                jobQueueRepository.claimJob(
+                        job.getId(),
+                        processingTime
+                );
+
+
+        /*
+         * updatedRows == 1
+         *
+         * This pod successfully performed:
+         *
+         * PENDING → PROCESSING
+         *
+         *
+         * updatedRows == 0
+         *
+         * Another pod already claimed it.
+         */
+
+        return updatedRows == 1;
+    }
+
+
+    // =====================================================
+    // PROCESS CLAIMED JOB
+    // =====================================================
+
+    private void processClaimedJob(
             JobQueue job) {
 
         try {
-
-            // -------------------------------------------------
-            // CHANGE JOB STATUS TO PROCESSING
-            // -------------------------------------------------
-
-            job.setStatus(
-                    "PROCESSING"
-            );
-
-            job.setAttempts(
-                    job.getAttempts() + 1
-            );
-
-            jobQueueRepository.save(job);
-
 
             System.out.println();
 
@@ -137,19 +195,45 @@ public class JobWorker {
                                     job.getOrderId()
                             )
                             .orElseThrow(
-                                    () -> new RuntimeException(
-                                            "Order not found: "
-                                                    + job.getOrderId()
-                                    )
+                                    () ->
+                                            new RuntimeException(
+                                                    "Order not found: "
+                                                            + job.getOrderId()
+                                            )
                             );
+
+
+            // -------------------------------------------------
+            // IDEMPOTENCY CHECK
+            // -------------------------------------------------
+
+            /*
+             * If the order was already completed,
+             * don't process the investment again.
+             */
+
+            if ("COMPLETED".equalsIgnoreCase(
+                    order.getStatus()
+            )) {
+
+                markJobCompleted(job);
+
+                System.out.println(
+                        "Order already COMPLETED. "
+                                + "Job marked completed."
+                );
+
+                return;
+            }
 
 
             // -------------------------------------------------
             // CHECK PAYMENT
             // -------------------------------------------------
 
-            if (!"PAID".equals(
-                    order.getStatus())) {
+            if (!"PAID".equalsIgnoreCase(
+                    order.getStatus()
+            )) {
 
                 throw new RuntimeException(
                         "Order is not PAID"
@@ -237,8 +321,27 @@ public class JobWorker {
             // CALCULATE UNITS
             // =================================================
 
+            if (order.getAmount() == null ||
+                    order.getAmount() <= 0) {
+
+                throw new RuntimeException(
+                        "Invalid investment amount"
+                );
+            }
+
+
             Double units =
                     order.getAmount() / nav;
+
+
+            if (units <= 0 ||
+                    units.isInfinite() ||
+                    units.isNaN()) {
+
+                throw new RuntimeException(
+                        "Invalid units calculated"
+                );
+            }
 
 
             System.out.println();
@@ -267,25 +370,26 @@ public class JobWorker {
                     fund.getName()
             );
 
-            order.setNav(nav);
+            order.setNav(
+                    nav
+            );
 
-            order.setUnits(units);
-
-
-            // =================================================
-            // SET INVESTMENT COMPLETION TIME
-            // =================================================
-
-            LocalDateTime completedTime =
-                    LocalDateTime.now();
-
-            order.setCompletedAt(
-                    completedTime
+            order.setUnits(
+                    units
             );
 
 
             // =================================================
-            // MARK ORDER AS COMPLETED
+            // SET COMPLETION TIME
+            // =================================================
+
+            order.setCompletedAt(
+                    LocalDateTime.now()
+            );
+
+
+            // =================================================
+            // MARK ORDER COMPLETED
             // =================================================
 
             order.setStatus(
@@ -294,28 +398,19 @@ public class JobWorker {
 
 
             // =================================================
-            // SAVE COMPLETED ORDER
+            // SAVE ORDER
             // =================================================
 
-            orderRepository.saveAndFlush(order);
+            orderRepository.saveAndFlush(
+                    order
+            );
 
 
             // =================================================
             // MARK JOB COMPLETED
             // =================================================
 
-            job.setStatus(
-                    "COMPLETED"
-            );
-
-            job.setProcessedAt(
-                    LocalDateTime.now()
-            );
-
-            job.setErrorMessage(null);
-
-
-            jobQueueRepository.save(job);
+            markJobCompleted(job);
 
 
             // =================================================
@@ -363,8 +458,7 @@ public class JobWorker {
             );
 
             System.out.println(
-                    "Job Status: "
-                            + job.getStatus()
+                    "Job Status: COMPLETED"
             );
 
             System.out.println(
@@ -374,30 +468,86 @@ public class JobWorker {
 
         } catch (Exception e) {
 
-            // =================================================
-            // JOB FAILED
-            // =================================================
+            handleJobFailure(
+                    job,
+                    e
+            );
+        }
+    }
+
+
+    // =====================================================
+    // MARK JOB COMPLETED
+    // =====================================================
+
+    private void markJobCompleted(
+            JobQueue job) {
+
+        job.setStatus(
+                "COMPLETED"
+        );
+
+        job.setProcessedAt(
+                LocalDateTime.now()
+        );
+
+        job.setProcessingAt(
+                null
+        );
+
+        job.setErrorMessage(
+                null
+        );
+
+
+        jobQueueRepository.save(
+                job
+        );
+    }
+
+
+    // =====================================================
+    // HANDLE JOB FAILURE
+    // =====================================================
+
+    private void handleJobFailure(
+            JobQueue job,
+            Exception exception) {
+
+        int attempts =
+                job.getAttempts() == null
+                        ? 1
+                        : job.getAttempts();
+
+
+        /*
+         * Maximum 5 attempts.
+         */
+
+        if (attempts < 5) {
 
             job.setStatus(
-                    "FAILED"
+                    "PENDING"
+            );
+
+            job.setProcessingAt(
+                    null
             );
 
             job.setErrorMessage(
-                    e.getMessage()
+                    exception.getMessage()
             );
 
 
-            jobQueueRepository.save(job);
+            jobQueueRepository.save(
+                    job
+            );
 
 
             System.out.println();
 
             System.out.println(
-                    "===================================="
-            );
-
-            System.out.println(
-                    "JOB FAILED"
+                    "JOB FAILED - WILL RETRY"
             );
 
             System.out.println(
@@ -406,17 +556,111 @@ public class JobWorker {
             );
 
             System.out.println(
-                    "Order ID: "
-                            + job.getOrderId()
+                    "Attempt: "
+                            + attempts
             );
 
             System.out.println(
                     "Error: "
-                            + e.getMessage()
+                            + exception.getMessage()
             );
 
+
+            return;
+        }
+
+
+        // -------------------------------------------------
+        // PERMANENT FAILURE
+        // -------------------------------------------------
+
+        job.setStatus(
+                "FAILED"
+        );
+
+        job.setProcessingAt(
+                null
+        );
+
+        job.setErrorMessage(
+                exception.getMessage()
+        );
+
+
+        jobQueueRepository.save(
+                job
+        );
+
+
+        System.out.println();
+
+        System.out.println(
+                "===================================="
+        );
+
+        System.out.println(
+                "JOB PERMANENTLY FAILED"
+        );
+
+        System.out.println(
+                "Job ID: "
+                        + job.getJobId()
+        );
+
+        System.out.println(
+                "Order ID: "
+                        + job.getOrderId()
+        );
+
+        System.out.println(
+                "Attempts: "
+                        + attempts
+        );
+
+        System.out.println(
+                "Error: "
+                        + exception.getMessage()
+        );
+
+        System.out.println(
+                "===================================="
+        );
+    }
+
+
+    // =====================================================
+    // RESET STALE JOBS
+    // =====================================================
+
+    private void resetStaleJobs() {
+
+        /*
+         * If a Kubernetes pod crashes after:
+         *
+         * PENDING → PROCESSING
+         *
+         * the job could remain PROCESSING forever.
+         *
+         * Jobs processing for more than 10 minutes
+         * are returned to PENDING.
+         */
+
+        LocalDateTime cutoff =
+                LocalDateTime.now()
+                        .minusMinutes(10);
+
+
+        int resetCount =
+                jobQueueRepository.resetStaleJobs(
+                        cutoff
+                );
+
+
+        if (resetCount > 0) {
+
             System.out.println(
-                    "===================================="
+                    "Reset stale jobs: "
+                            + resetCount
             );
         }
     }

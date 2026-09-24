@@ -3,7 +3,10 @@ package com.internship.orderservice.service;
 import com.internship.orderservice.entity.JobQueue;
 import com.internship.orderservice.repository.JobQueueRepository;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,96 +30,112 @@ public class JobQueueService {
     // CREATE JOB
     // =====================================================
 
+    @Transactional
     public JobQueue createJob(
             String orderId) {
 
-        // -------------------------------------------------
-        // PREVENT DUPLICATE JOB
-        // -------------------------------------------------
+        if (orderId == null ||
+                orderId.isBlank()) {
 
-        if (jobQueueRepository
-                .findByOrderId(orderId)
-                .isPresent()) {
-
-            return jobQueueRepository
-                    .findByOrderId(orderId)
-                    .get();
+            throw new IllegalArgumentException(
+                    "Order ID is required"
+            );
         }
 
 
         // -------------------------------------------------
-        // CREATE JOB
+        // EXISTING JOB
         // -------------------------------------------------
 
-        JobQueue job =
-                new JobQueue();
+        return jobQueueRepository
+                .findByOrderId(orderId)
+                .orElseGet(() -> {
+
+                    JobQueue job =
+                            new JobQueue();
+
+                    job.setJobId(
+                            "JOB-" + UUID.randomUUID()
+                    );
+
+                    job.setOrderId(
+                            orderId
+                    );
+
+                    job.setStatus(
+                            "PENDING"
+                    );
+
+                    job.setCreatedAt(
+                            LocalDateTime.now()
+                    );
+
+                    job.setAttempts(
+                            0
+                    );
+
+                    job.setProcessingAt(
+                            null
+                    );
+
+                    job.setProcessedAt(
+                            null
+                    );
+
+                    job.setErrorMessage(
+                            null
+                    );
 
 
-        job.setJobId(
-                "JOB-" + UUID.randomUUID()
-        );
+                    try {
+
+                        return jobQueueRepository.saveAndFlush(
+                                job
+                        );
+
+                    } catch (
+                            DataIntegrityViolationException e
+                    ) {
+
+                        /*
+                         * Another pod may have created the
+                         * same order's job simultaneously.
+                         *
+                         * The database unique constraint
+                         * protects the data.
+                         *
+                         * The current transaction may now be
+                         * rollback-only, so don't query using
+                         * this same transaction.
+                         */
+
+                        return findExistingJobAfterConflict(
+                                orderId
+                        );
+                    }
+                });
+    }
 
 
-        job.setOrderId(
-                orderId
-        );
+    // =====================================================
+    // FIND EXISTING JOB AFTER RACE
+    // =====================================================
 
+    @Transactional(
+            propagation = Propagation.REQUIRES_NEW
+    )
+    protected JobQueue findExistingJobAfterConflict(
+            String orderId) {
 
-        job.setStatus(
-                "PENDING"
-        );
-
-
-        job.setCreatedAt(
-                LocalDateTime.now()
-        );
-
-
-        job.setAttempts(
-                0
-        );
-
-
-        // -------------------------------------------------
-        // SAVE
-        // -------------------------------------------------
-
-        JobQueue savedJob =
-                jobQueueRepository.save(
-                        job
+        return jobQueueRepository
+                .findByOrderId(orderId)
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Job creation conflict for order: "
+                                                + orderId
+                                )
                 );
-
-
-        System.out.println();
-        System.out.println(
-                "===================================="
-        );
-
-        System.out.println(
-                "JOB ADDED TO QUEUE"
-        );
-
-        System.out.println(
-                "Job ID: "
-                        + savedJob.getJobId()
-        );
-
-        System.out.println(
-                "Order ID: "
-                        + savedJob.getOrderId()
-        );
-
-        System.out.println(
-                "Status: "
-                        + savedJob.getStatus()
-        );
-
-        System.out.println(
-                "===================================="
-        );
-
-
-        return savedJob;
     }
 
 

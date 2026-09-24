@@ -5,11 +5,46 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "orders")
+@Table(
+        name = "orders",
+
+        uniqueConstraints = {
+
+                @UniqueConstraint(
+                        name = "uk_order_order_id",
+                        columnNames = "order_id"
+                ),
+
+                @UniqueConstraint(
+                        name = "uk_order_idempotency",
+                        columnNames = "idempotency_key"
+                )
+        },
+
+        indexes = {
+
+                @Index(
+                        name = "idx_order_user_id",
+                        columnList = "user_id"
+                ),
+
+                @Index(
+                        name = "idx_order_status",
+                        columnList = "status"
+                ),
+
+                @Index(
+                        name = "idx_order_payment_id",
+                        columnList = "payment_id"
+                )
+        }
+)
 public class Order {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(
+            strategy = GenerationType.IDENTITY
+    )
     private Long id;
 
 
@@ -61,8 +96,11 @@ public class Order {
         return orderId;
     }
 
-    public void setOrderId(String orderId) {
-        this.orderId = orderId;
+    public void setOrderId(
+            String orderId) {
+
+        this.orderId =
+                orderId;
     }
 
 
@@ -74,8 +112,11 @@ public class Order {
         return userId;
     }
 
-    public void setUserId(String userId) {
-        this.userId = userId;
+    public void setUserId(
+            String userId) {
+
+        this.userId =
+                userId;
     }
 
 
@@ -87,8 +128,11 @@ public class Order {
         return fundId;
     }
 
-    public void setFundId(String fundId) {
-        this.fundId = fundId;
+    public void setFundId(
+            String fundId) {
+
+        this.fundId =
+                fundId;
     }
 
 
@@ -100,23 +144,29 @@ public class Order {
         return fundName;
     }
 
-    public void setFundName(String fundName) {
-        this.fundName = fundName;
+    public void setFundName(
+            String fundName) {
+
+        this.fundName =
+                fundName;
     }
 
-// =====================================================
-// INVESTMENT HORIZON
-// =====================================================
+
+    // =====================================================
+    // INVESTMENT HORIZON
+    // =====================================================
 
     public String getInvestmentHorizon() {
+
         return investmentHorizon;
-   }
+    }
 
     public void setInvestmentHorizon(
-        String investmentHorizon) {
+            String investmentHorizon) {
 
-            this.investmentHorizon = investmentHorizon;
-  }
+        this.investmentHorizon =
+                investmentHorizon;
+    }
 
 
     // =====================================================
@@ -127,8 +177,11 @@ public class Order {
         return amount;
     }
 
-    public void setAmount(Double amount) {
-        this.amount = amount;
+    public void setAmount(
+            Double amount) {
+
+        this.amount =
+                amount;
     }
 
 
@@ -140,8 +193,11 @@ public class Order {
         return nav;
     }
 
-    public void setNav(Double nav) {
-        this.nav = nav;
+    public void setNav(
+            Double nav) {
+
+        this.nav =
+                nav;
     }
 
 
@@ -153,8 +209,11 @@ public class Order {
         return units;
     }
 
-    public void setUnits(Double units) {
-        this.units = units;
+    public void setUnits(
+            Double units) {
+
+        this.units =
+                units;
     }
 
 
@@ -166,8 +225,11 @@ public class Order {
         return paymentId;
     }
 
-    public void setPaymentId(String paymentId) {
-        this.paymentId = paymentId;
+    public void setPaymentId(
+            String paymentId) {
+
+        this.paymentId =
+                paymentId;
     }
 
 
@@ -176,28 +238,32 @@ public class Order {
     // =====================================================
 
     public String getRazorpayOrderId() {
+
         return razorpayOrderId;
     }
 
     public void setRazorpayOrderId(
             String razorpayOrderId) {
 
-        this.razorpayOrderId = razorpayOrderId;
+        this.razorpayOrderId =
+                razorpayOrderId;
     }
 
 
     // =====================================================
-    // IDEMPOTENCY KEY
+    // IDEMPOTENCY
     // =====================================================
 
     public String getIdempotencyKey() {
+
         return idempotencyKey;
     }
 
     public void setIdempotencyKey(
             String idempotencyKey) {
 
-        this.idempotencyKey = idempotencyKey;
+        this.idempotencyKey =
+                idempotencyKey;
     }
 
 
@@ -209,8 +275,11 @@ public class Order {
         return status;
     }
 
-    public void setStatus(String status) {
-        this.status = status;
+    public void setStatus(
+            String status) {
+
+        this.status =
+                status;
     }
 
 
@@ -219,13 +288,15 @@ public class Order {
     // =====================================================
 
     public LocalDateTime getCreatedAt() {
+
         return createdAt;
     }
 
     public void setCreatedAt(
             LocalDateTime createdAt) {
 
-        this.createdAt = createdAt;
+        this.createdAt =
+                createdAt;
     }
 
 
@@ -234,13 +305,15 @@ public class Order {
     // =====================================================
 
     public LocalDateTime getPaidAt() {
+
         return paidAt;
     }
 
     public void setPaidAt(
             LocalDateTime paidAt) {
 
-        this.paidAt = paidAt;
+        this.paidAt =
+                paidAt;
     }
 
 
@@ -249,12 +322,14 @@ public class Order {
     // =====================================================
 
     public LocalDateTime getCompletedAt() {
+
         return completedAt;
     }
 
     public void setCompletedAt(
             LocalDateTime completedAt) {
 
-        this.completedAt = completedAt;
+        this.completedAt =
+                completedAt;
     }
 }

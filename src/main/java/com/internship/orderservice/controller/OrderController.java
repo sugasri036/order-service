@@ -3,7 +3,9 @@ package com.internship.orderservice.controller;
 import com.internship.orderservice.entity.Order;
 import com.internship.orderservice.service.OrderService;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -14,10 +16,6 @@ public class OrderController {
 
     private final OrderService orderService;
 
-
-    // =====================================================
-    // CONSTRUCTOR
-    // =====================================================
 
     public OrderController(
             OrderService orderService) {
@@ -33,9 +31,43 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<?> createOrder(
-            @RequestBody Order order) {
+
+            @RequestHeader(
+                    value = "X-User-Id",
+                    required = false
+            )
+            String authenticatedUserId,
+
+            @RequestBody Order order
+
+    ) {
 
         try {
+
+            if (authenticatedUserId == null ||
+                    authenticatedUserId.isBlank()) {
+
+                return ResponseEntity
+                        .status(
+                                HttpStatus.UNAUTHORIZED
+                        )
+                        .body(
+                                "Authenticated user ID is required"
+                        );
+            }
+
+
+            /*
+             * NEVER trust userId supplied by the frontend.
+             *
+             * The Gateway created X-User-Id from
+             * the verified JWT.
+             */
+
+            order.setUserId(
+                    authenticatedUserId
+            );
+
 
             return ResponseEntity.ok(
                     orderService.createOrder(
@@ -43,11 +75,15 @@ public class OrderController {
                     )
             );
 
+
         } catch (IllegalArgumentException e) {
 
             return ResponseEntity
                     .badRequest()
-                    .body(e.getMessage());
+                    .body(
+                            e.getMessage()
+                    );
+
 
         } catch (Exception e) {
 
@@ -55,18 +91,28 @@ public class OrderController {
 
             return ResponseEntity
                     .internalServerError()
-                    .body(e.getMessage());
+                    .body(
+                            "Unable to create order"
+                    );
         }
     }
 
 
     // =====================================================
-    // GET ALL
+    // GET ALL ORDERS
     // =====================================================
 
     @GetMapping
     public ResponseEntity<List<Order>>
     getAllOrders() {
+
+        /*
+         * This endpoint should eventually become
+         * ADMIN ONLY.
+         *
+         * For now it remains available to authenticated
+         * requests through the Gateway.
+         */
 
         return ResponseEntity.ok(
                 orderService.getAllOrders()
@@ -75,12 +121,15 @@ public class OrderController {
 
 
     // =====================================================
-    // GET BY ORDER ID
+    // GET ORDER BY ID
     // =====================================================
 
     @GetMapping("/{orderId}")
     public ResponseEntity<?> getOrder(
-            @PathVariable String orderId) {
+
+            @PathVariable String orderId
+
+    ) {
 
         try {
 
@@ -89,6 +138,7 @@ public class OrderController {
                             orderId
                     )
             );
+
 
         } catch (Exception e) {
 
@@ -104,13 +154,56 @@ public class OrderController {
     // =====================================================
 
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<Order>>
-    getOrdersByUser(
-            @PathVariable String userId) {
+    public ResponseEntity<?> getOrdersByUser(
+
+            @PathVariable String userId,
+
+            @RequestHeader(
+                    value = "X-User-Id",
+                    required = false
+            )
+            String authenticatedUserId
+
+    ) {
+
+        if (authenticatedUserId == null ||
+                authenticatedUserId.isBlank()) {
+
+            return ResponseEntity
+                    .status(
+                            HttpStatus.UNAUTHORIZED
+                    )
+                    .body(
+                            "Authenticated user ID is required"
+                    );
+        }
+
+
+        /*
+         * Prevent:
+         *
+         * User A
+         *    ↓
+         * /user/User-B
+         *
+         * from reading User B's orders.
+         */
+
+        if (!authenticatedUserId.equals(userId)) {
+
+            return ResponseEntity
+                    .status(
+                            HttpStatus.FORBIDDEN
+                    )
+                    .body(
+                            "You are not allowed to access another user's orders"
+                    );
+        }
+
 
         return ResponseEntity.ok(
                 orderService.getOrdersByUser(
-                        userId
+                        authenticatedUserId
                 )
         );
     }
@@ -122,8 +215,23 @@ public class OrderController {
 
     @PutMapping("/{orderId}/payment")
     public ResponseEntity<?> markOrderAsPaid(
+
             @PathVariable String orderId,
-            @RequestParam String paymentId) {
+
+            @RequestParam String paymentId
+
+    ) {
+
+        /*
+         * This endpoint is called by Payment Service.
+         *
+         * It is intentionally not dependent on X-User-Id
+         * because it is a service-to-service callback.
+         *
+         * Later we will protect this with an internal
+         * service secret when we move completely to
+         * Kubernetes.
+         */
 
         try {
 
@@ -134,24 +242,30 @@ public class OrderController {
                     )
             );
 
+
         } catch (Exception e) {
 
             e.printStackTrace();
 
             return ResponseEntity
                     .badRequest()
-                    .body(e.getMessage());
+                    .body(
+                            e.getMessage()
+                    );
         }
     }
 
 
     // =====================================================
-    // MARK ORDER AS PAYMENT FAILED
+    // MARK PAYMENT FAILED
     // =====================================================
 
     @PutMapping("/{orderId}/payment-failed")
     public ResponseEntity<?> markOrderAsPaymentFailed(
-            @PathVariable String orderId) {
+
+            @PathVariable String orderId
+
+    ) {
 
         try {
 
@@ -161,13 +275,16 @@ public class OrderController {
                     )
             );
 
+
         } catch (Exception e) {
 
             e.printStackTrace();
 
             return ResponseEntity
                     .badRequest()
-                    .body(e.getMessage());
+                    .body(
+                            e.getMessage()
+                    );
         }
     }
 }

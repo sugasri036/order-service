@@ -1,0 +1,159 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: order-service
+  namespace: investra
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: order-service
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+
+  template:
+    metadata:
+      labels:
+        app: order-service
+
+    spec:
+      terminationGracePeriodSeconds: 30
+
+      containers:
+        - name: order-service
+
+          image: order-service:local
+
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 8083
+              protocol: TCP
+
+          env:
+            # =================================================
+            # APPLICATION PORT
+            # =================================================
+
+            - name: PORT
+              value: "8083"
+
+            # =================================================
+            # DATABASE
+            # =================================================
+
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: order-service-secrets
+                  key: DB_URL
+
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: order-service-secrets
+                  key: DB_USERNAME
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: order-service-secrets
+                  key: DB_PASSWORD
+
+            # =================================================
+            # PAYMENT SERVICE
+            # =================================================
+
+            - name: PAYMENT_SERVICE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: order-service-secrets
+                  key: PAYMENT_SERVICE_URL
+
+            # =================================================
+            # FUND SERVICE
+            # =================================================
+
+            - name: FUND_SERVICE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: order-service-secrets
+                  key: FUND_SERVICE_URL
+
+            # =================================================
+            # EUREKA
+            # =================================================
+
+            - name: EUREKA_ENABLED
+              value: "false"
+
+            - name: EUREKA_REGISTER
+              value: "false"
+
+            - name: EUREKA_FETCH
+              value: "false"
+
+            # =================================================
+            # WORKER
+            # =================================================
+
+            - name: WORKER_FIXED_DELAY
+              value: "5000"
+
+          # ===================================================
+          # STARTUP PROBE
+          # ===================================================
+
+          startupProbe:
+            tcpSocket:
+              port: 8083
+
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+
+          # ===================================================
+          # READINESS PROBE
+          # ===================================================
+
+          readinessProbe:
+            tcpSocket:
+              port: 8083
+
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ===================================================
+          # LIVENESS PROBE
+          # ===================================================
+
+          livenessProbe:
+            tcpSocket:
+              port: 8083
+
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ===================================================
+          # RESOURCE LIMITS
+          # ===================================================
+
+          resources:
+            limits:
+              cpu: 500m
+              memory: 768Mi
+            requests:
+              cpu: 100m
+              memory: 768Mi
